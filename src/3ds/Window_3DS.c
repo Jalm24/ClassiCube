@@ -10,6 +10,7 @@
 #include "../ExtMath.h"
 #include "../Gui.h"
 
+#include "cpp.h" //CPP = Circle Pad Pro
 #include <3ds.h>
 
 static cc_bool launcherMode;
@@ -154,11 +155,23 @@ static Result irrst_result;
 void Gamepads_Init(void) {
 	Input.Sources = INPUT_SOURCE_GAMEPAD;
 	irrst_result  = irrstInit();
+	//star cpp
+	cppInit();
 }
 
-static void HandleButtons(int port, u32 mods) {
+static void HandleButtons(int port, u32 mods, u32 extra) {
+	if (cppGetConnected()) {
+		//CPP specific buttons
+		Gamepad_SetButton(port, CCPAD_R, extra & KEY_R);
+		Gamepad_SetButton(port, CCPAD_ZL, extra & KEY_ZL);
+		Gamepad_SetButton(port, CCPAD_ZR, extra & KEY_ZR);
+
+	}else{
+		Gamepad_SetButton(port, CCPAD_R, mods & KEY_R);
+		Gamepad_SetButton(port, CCPAD_ZL, mods & KEY_ZL);
+		Gamepad_SetButton(port, CCPAD_ZR, mods & KEY_ZR);
+	}
 	Gamepad_SetButton(port, CCPAD_L, mods & KEY_L);
-	Gamepad_SetButton(port, CCPAD_R, mods & KEY_R);
 	
 	Gamepad_SetButton(port, CCPAD_1, mods & KEY_A);
 	Gamepad_SetButton(port, CCPAD_2, mods & KEY_B);
@@ -172,9 +185,6 @@ static void HandleButtons(int port, u32 mods) {
 	Gamepad_SetButton(port, CCPAD_RIGHT,  mods & KEY_DRIGHT);
 	Gamepad_SetButton(port, CCPAD_UP,     mods & KEY_DUP);
 	Gamepad_SetButton(port, CCPAD_DOWN,   mods & KEY_DDOWN);
-	
-	Gamepad_SetButton(port, CCPAD_ZL, mods & KEY_ZL);
-	Gamepad_SetButton(port, CCPAD_ZR, mods & KEY_ZR);
 }
 
 #define AXIS_SCALE 8.0f
@@ -189,19 +199,34 @@ static void ProcessCircleInput(int port, int axis, circlePosition* pos, float de
 void Gamepads_Process(float delta) {
 	u32 mods = hidKeysDown() | hidKeysHeld();
 	int port = Gamepad_Connect(0x3D5, defaults_3ds);
-	HandleButtons(port, mods);
 	
 	circlePosition hid_pos;
 	hidCircleRead(&hid_pos);
 
-	if (irrst_result == 0) {
+	//cpp variables
+	circlePosition cpp_pos;
+    u32 cpp_keys;
+
+	//check if cpp is connected or not
+	if (cppGetConnected()) {
+
+        //read the status of the CPP
+        cppCircleRead(&cpp_pos);
+        cpp_keys = cppKeysHeld();
+
+        //joysticks
+        ProcessCircleInput(port, PAD_AXIS_RIGHT, &cpp_pos, delta);
+		ProcessCircleInput(port, PAD_AXIS_LEFT,  &hid_pos, delta);
+		HandleButtons(port, mods, cpp_keys);
+	} else if (irrst_result == 0) {
+		HandleButtons(port, mods, cpp_keys);
 		circlePosition stk_pos;
 		irrstScanInput();
 		irrstCstickRead(&stk_pos);
-		
 		ProcessCircleInput(port, PAD_AXIS_RIGHT, &stk_pos, delta);
 		ProcessCircleInput(port, PAD_AXIS_LEFT,  &hid_pos, delta);
 	} else {
+		HandleButtons(port, mods, cpp_keys);
 		ProcessCircleInput(port, PAD_AXIS_RIGHT, &hid_pos, delta);
 	}
 }
